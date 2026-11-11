@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.0.5' };
+    window.__vag11 = { version: '1.0.6' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -196,15 +196,29 @@
             log('ad probe [' + m[0] + ']: ' + names.join(' '));
         }
     }
-    JSON.parse = function () {
-        try { probeAds(arguments[0]); } catch (e) { }
-        var r = parse.apply(this, arguments);
+    function edit(r) {
         if (r && typeof r === 'object') {
             try { if (cfg.adblock) cleanAds(r); } catch (e) { log('ad block: ' + e); }
             try { addSettingsEntries(r); } catch (e) { log('settings: ' + e); }
         }
         return r;
+    }
+    JSON.parse = function () {
+        try { probeAds(arguments[0]); } catch (e) { }
+        return edit(parse.apply(this, arguments));
     };
+
+    // The page also reads responses with fetch(...).json(), which never goes through JSON.parse:
+    // on Cobalt the Home feed arrives that way, so its adverts got past the hook above. Read as
+    // text and parsed here, those responses get the same treatment.
+    if (window.Response && Response.prototype.json) {
+        Response.prototype.json = function () {
+            return this.text().then(function (text) {
+                try { probeAds(text); } catch (e) { }
+                return edit(parse(text));
+            });
+        };
+    }
 
     // ---- the menus -----------------------------------------------------------------------------
     //
