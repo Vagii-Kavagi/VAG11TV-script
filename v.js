@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.0.6' };
+    window.__vag11 = { version: '1.0.7' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -207,6 +207,57 @@
         try { probeAds(arguments[0]); } catch (e) { }
         return edit(parse.apply(this, arguments));
     };
+
+    // XMLHttpRequest with responseType "json" is parsed natively, past JSON.parse as well. Responses
+    // that mention an advert are logged with their address (diagnosis).
+    var xhrProbeLeft = 8;
+    if (window.XMLHttpRequest) {
+        var xhrOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function (method, url) {
+            this.__vag11url = String(url || '');
+            return xhrOpen.apply(this, arguments);
+        };
+        var respDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'response');
+        if (respDesc && respDesc.get) {
+            Object.defineProperty(XMLHttpRequest.prototype, 'response', {
+                configurable: true, enumerable: respDesc.enumerable,
+                get: function () {
+                    var v = respDesc.get.call(this);
+                    if (this.responseType === 'json' && v && typeof v === 'object' && !this.__vag11done) {
+                        this.__vag11done = true;
+                        edit(v);
+                    }
+                    if (xhrProbeLeft > 0 && !this.__vag11probed && this.readyState === 4) {
+                        this.__vag11probed = true;
+                        try {
+                            var s = typeof v === 'string' ? v : (v && typeof v === 'object' && !(v instanceof ArrayBuffer) ? JSON.stringify(v) : '');
+                            if (/Sponsored/.test(s)) { xhrProbeLeft--; log('xhr with an advert: ' + this.responseType + ' ' + this.__vag11url.slice(0, 120)); }
+                            else if (v instanceof ArrayBuffer || (v && v.byteLength)) { xhrProbeLeft--; log('xhr binary: ' + this.__vag11url.slice(0, 120)); }
+                        } catch (e) { }
+                    }
+                    return v;
+                }
+            });
+        }
+    }
+
+    // On screen: the YouTube elements around a rendered "Sponsored" label (diagnosis).
+    var domProbeLeft = 3;
+    setInterval(function () {
+        if (domProbeLeft <= 0 || !document.evaluate) return;
+        try {
+            var res = document.evaluate("//text()[normalize-space()='Sponsored']", document, null, 7, null);
+            for (var i = 0; i < res.snapshotLength && domProbeLeft > 0; i++) {
+                var chain = [], e = res.snapshotItem(i).parentElement;
+                for (var d = 0; e && d < 14; d++, e = e.parentElement) {
+                    var r = e.getBoundingClientRect();
+                    chain.push(e.tagName.toLowerCase() + '(' + Math.round(r.width) + 'x' + Math.round(r.height) + ')');
+                }
+                domProbeLeft--;
+                log('on screen "Sponsored": ' + chain.join(' < '));
+            }
+        } catch (e) { log('dom probe: ' + e); domProbeLeft = 0; }
+    }, 2000);
 
     // The page also reads responses with fetch(...).json(), which never goes through JSON.parse:
     // on Cobalt the Home feed arrives that way, so its adverts got past the hook above. Read as
