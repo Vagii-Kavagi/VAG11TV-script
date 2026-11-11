@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.0.0' };
+    window.__vag11 = { version: '1.0.1' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -50,8 +50,9 @@
         try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) { }
     }
 
+    // As warnings: the engine copies only warnings and errors to the system log (adb logcat).
     function log(msg) {
-        try { console.log('[VAG11] ' + msg); } catch (e) { }
+        try { console.warn('[VAG11] ' + msg); } catch (e) { }
     }
 
     // ---- 1. ad blocking ------------------------------------------------------------------------
@@ -305,7 +306,15 @@
 
     var segs = [], curVid = null, box = null, askSeg = null, doneUuid = {}, hideTimer = 0;
 
-    function videoEl() { return document.querySelector('video'); }
+    // The watch page's player. The page has other <video> elements too (Home previews), so the
+    // first one is not necessarily it.
+    function videoEl() {
+        var main = document.querySelector('.html5-main-video');
+        if (main) return main;
+        var all = document.querySelectorAll('video');
+        for (var i = 0; i < all.length; i++) if (!all[i].paused) return all[i];
+        return all[0] || null;
+    }
 
     function vidFromUrl() {
         var m = (location.hash || '').match(/[?&]v=([A-Za-z0-9_-]{11})/);
@@ -428,6 +437,7 @@
     }
 
     function skip(v, s) {
+        log('skipping ' + s.cat + ' ' + s.start.toFixed(1) + ' -> ' + s.end.toFixed(1));
         doneUuid[s.uuid] = true;
         askSeg = null;
         try { v.currentTime = Math.min(s.end, v.duration - 0.5); } catch (e) { }
@@ -457,8 +467,11 @@
             hide();
             if (id && cfg.sb) {
                 fetchSegments(id).then(function (list) {
+                    log('segments for ' + id + ': ' + list.map(function (s) {
+                        return s.cat + ' ' + s.start.toFixed(0) + '-' + s.end.toFixed(0);
+                    }).join(', '));
                     if (id === curVid) segs = list;
-                }, function (e) { log('segments: ' + e); });
+                }, function (e) { log('segments for ' + id + ' failed: ' + e); });
             }
         }
         var v = videoEl();
