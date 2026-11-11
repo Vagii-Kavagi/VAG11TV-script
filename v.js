@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.0.8' };
+    window.__vag11 = { version: '1.0.9' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -191,8 +191,25 @@
         }
         return r;
     }
+    // Diagnosis (1.0.9): which parsed responses carry adverts, and whether they were taken out.
+    var parseProbeLeft = 12;
+    function probeParse(text, how) {
+        if (parseProbeLeft <= 0 || typeof text !== 'string' || text.indexOf('adSlotRenderer') < 0) return;
+        parseProbeLeft--;
+        var before = adStats.feedAds;
+        return function (r) {
+            var left = 0;
+            try { left = (JSON.stringify(r).match(/adSlotRenderer/g) || []).length; } catch (e) { }
+            log(how + ' with adSlotRenderer x' + (text.match(/adSlotRenderer/g) || []).length + ' (' + text.length
+                + ' chars) at ' + Math.round(performance.now()) + ' ms: removed ' + (adStats.feedAds - before) + ', left ' + left
+                + (text.indexOf('tvBrowseRenderer') >= 0 ? ' [browse]' : '') + (text.indexOf('feedNudgeRenderer') >= 0 ? ' [nudge]' : ''));
+        };
+    }
     JSON.parse = function () {
-        return edit(parse.apply(this, arguments));
+        var after = probeParse(arguments[0], 'JSON.parse');
+        var r = edit(parse.apply(this, arguments));
+        if (after) after(r);
+        return r;
     };
 
     // The page also reads responses with fetch(...).json(), which never goes through JSON.parse:
@@ -201,7 +218,10 @@
     if (window.Response && Response.prototype.json) {
         Response.prototype.json = function () {
             return this.text().then(function (text) {
-                return edit(parse(text));
+                var after = probeParse(text, 'Response.json');
+                var r = edit(parse(text));
+                if (after) after(r);
+                return r;
             });
         };
     }
@@ -212,13 +232,21 @@
     // "Sponsored" badge is hidden at its nearest advert-type ancestor, and its name logged once.
     var adStyle = document.createElement('style');
     adStyle.textContent = 'ytlr-ad-slot-renderer{display:none!important}';
-    var otherAdTags = {};
+    var otherAdTags = {}, chainLogs = 2;
     function hideAds() {
         if (!cfg.adblock) { if (adStyle.parentNode) adStyle.parentNode.removeChild(adStyle); return; }
         if (!adStyle.parentNode) (document.head || document.documentElement).appendChild(adStyle);
         if (!document.evaluate) return;
         var res = document.evaluate("//text()[normalize-space()='Sponsored']", document, null, 7, null);
         for (var i = 0; i < res.snapshotLength; i++) {
+            if (chainLogs > 0) {
+                chainLogs--;
+                var chain = [];
+                for (var c = res.snapshotItem(i).parentElement, k = 0; c && k < 12; c = c.parentElement, k++) {
+                    chain.push(c.tagName.toLowerCase() + '[' + getComputedStyle(c).display + ']');
+                }
+                log('Sponsored on screen at ' + Math.round(performance.now()) + ' ms: ' + chain.join(' < '));
+            }
             for (var e = res.snapshotItem(i).parentElement, d = 0; e && d < 16; e = e.parentElement, d++) {
                 var tag = e.tagName.toLowerCase();
                 if (tag === 'ytlr-ad-slot-renderer') break;
@@ -651,5 +679,5 @@
         return { cfg: cfg, ads: adStats, vid: curVid, segs: segs, t: v ? v.currentTime : null, d: v ? v.duration : null };
     };
     window.__vag11.openMenu = openMenu;
-    log('loaded ' + window.__vag11.version);
+    log('loaded ' + window.__vag11.version + ' at ' + Math.round(performance.now()) + ' ms after page start');
 })();
