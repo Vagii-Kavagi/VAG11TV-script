@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.0.4' };
+    window.__vag11 = { version: '1.0.5' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -184,7 +184,20 @@
     // ---- one hook on YouTube's data ------------------------------------------------------------
 
     var parse = JSON.parse;
+    // Diagnosis: shows how adverts that got through are packaged (renderer names around them).
+    var adProbeLeft = 6;
+    function probeAds(text) {
+        if (adProbeLeft <= 0 || typeof text !== 'string') return;
+        var re = /Sponsored|"isAd":true|adInfoRenderer|AdRenderer"|adBadge|AD_BADGE|promoted/g, m, n = 0;
+        while ((m = re.exec(text)) && n < 2 && adProbeLeft > 0) {
+            n++; adProbeLeft--;
+            var s = text.slice(Math.max(0, m.index - 900), m.index + 200);
+            var names = (s.match(/"[a-zA-Z]+Renderer"|"[a-zA-Z]*[Aa]d[A-Z][a-zA-Z]*"/g) || []).filter(function (x, i, a) { return a.indexOf(x) === i; });
+            log('ad probe [' + m[0] + ']: ' + names.join(' '));
+        }
+    }
     JSON.parse = function () {
+        try { probeAds(arguments[0]); } catch (e) { }
         var r = parse.apply(this, arguments);
         if (r && typeof r === 'object') {
             try { if (cfg.adblock) cleanAds(r); } catch (e) { log('ad block: ' + e); }
