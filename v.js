@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.0.7' };
+    window.__vag11 = { version: '1.0.8' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -184,18 +184,6 @@
     // ---- one hook on YouTube's data ------------------------------------------------------------
 
     var parse = JSON.parse;
-    // Diagnosis: shows how adverts that got through are packaged (renderer names around them).
-    var adProbeLeft = 6;
-    function probeAds(text) {
-        if (adProbeLeft <= 0 || typeof text !== 'string') return;
-        var re = /Sponsored|"isAd":true|adInfoRenderer|AdRenderer"|adBadge|AD_BADGE|promoted/g, m, n = 0;
-        while ((m = re.exec(text)) && n < 2 && adProbeLeft > 0) {
-            n++; adProbeLeft--;
-            var s = text.slice(Math.max(0, m.index - 900), m.index + 200);
-            var names = (s.match(/"[a-zA-Z]+Renderer"|"[a-zA-Z]*[Aa]d[A-Z][a-zA-Z]*"/g) || []).filter(function (x, i, a) { return a.indexOf(x) === i; });
-            log('ad probe [' + m[0] + ']: ' + names.join(' '));
-        }
-    }
     function edit(r) {
         if (r && typeof r === 'object') {
             try { if (cfg.adblock) cleanAds(r); } catch (e) { log('ad block: ' + e); }
@@ -204,60 +192,8 @@
         return r;
     }
     JSON.parse = function () {
-        try { probeAds(arguments[0]); } catch (e) { }
         return edit(parse.apply(this, arguments));
     };
-
-    // XMLHttpRequest with responseType "json" is parsed natively, past JSON.parse as well. Responses
-    // that mention an advert are logged with their address (diagnosis).
-    var xhrProbeLeft = 8;
-    if (window.XMLHttpRequest) {
-        var xhrOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function (method, url) {
-            this.__vag11url = String(url || '');
-            return xhrOpen.apply(this, arguments);
-        };
-        var respDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'response');
-        if (respDesc && respDesc.get) {
-            Object.defineProperty(XMLHttpRequest.prototype, 'response', {
-                configurable: true, enumerable: respDesc.enumerable,
-                get: function () {
-                    var v = respDesc.get.call(this);
-                    if (this.responseType === 'json' && v && typeof v === 'object' && !this.__vag11done) {
-                        this.__vag11done = true;
-                        edit(v);
-                    }
-                    if (xhrProbeLeft > 0 && !this.__vag11probed && this.readyState === 4) {
-                        this.__vag11probed = true;
-                        try {
-                            var s = typeof v === 'string' ? v : (v && typeof v === 'object' && !(v instanceof ArrayBuffer) ? JSON.stringify(v) : '');
-                            if (/Sponsored/.test(s)) { xhrProbeLeft--; log('xhr with an advert: ' + this.responseType + ' ' + this.__vag11url.slice(0, 120)); }
-                            else if (v instanceof ArrayBuffer || (v && v.byteLength)) { xhrProbeLeft--; log('xhr binary: ' + this.__vag11url.slice(0, 120)); }
-                        } catch (e) { }
-                    }
-                    return v;
-                }
-            });
-        }
-    }
-
-    // On screen: the YouTube elements around a rendered "Sponsored" label (diagnosis).
-    var domProbeLeft = 3;
-    setInterval(function () {
-        if (domProbeLeft <= 0 || !document.evaluate) return;
-        try {
-            var res = document.evaluate("//text()[normalize-space()='Sponsored']", document, null, 7, null);
-            for (var i = 0; i < res.snapshotLength && domProbeLeft > 0; i++) {
-                var chain = [], e = res.snapshotItem(i).parentElement;
-                for (var d = 0; e && d < 14; d++, e = e.parentElement) {
-                    var r = e.getBoundingClientRect();
-                    chain.push(e.tagName.toLowerCase() + '(' + Math.round(r.width) + 'x' + Math.round(r.height) + ')');
-                }
-                domProbeLeft--;
-                log('on screen "Sponsored": ' + chain.join(' < '));
-            }
-        } catch (e) { log('dom probe: ' + e); domProbeLeft = 0; }
-    }, 2000);
 
     // The page also reads responses with fetch(...).json(), which never goes through JSON.parse:
     // on Cobalt the Home feed arrives that way, so its adverts got past the hook above. Read as
@@ -265,11 +201,39 @@
     if (window.Response && Response.prototype.json) {
         Response.prototype.json = function () {
             return this.text().then(function (text) {
-                try { probeAds(text); } catch (e) { }
                 return edit(parse(text));
             });
         };
     }
+
+    // On screen. On Cobalt the TV interface gets its feeds in a binary format, so the adverts in
+    // them (Home tiles, the banner at the top) cannot be taken out of the data. They are hidden
+    // instead: YouTube draws a feed advert as ytlr-ad-slot-renderer. Any other element carrying a
+    // "Sponsored" badge is hidden at its nearest advert-type ancestor, and its name logged once.
+    var adStyle = document.createElement('style');
+    adStyle.textContent = 'ytlr-ad-slot-renderer{display:none!important}';
+    var otherAdTags = {};
+    function hideAds() {
+        if (!cfg.adblock) { if (adStyle.parentNode) adStyle.parentNode.removeChild(adStyle); return; }
+        if (!adStyle.parentNode) (document.head || document.documentElement).appendChild(adStyle);
+        if (!document.evaluate) return;
+        var res = document.evaluate("//text()[normalize-space()='Sponsored']", document, null, 7, null);
+        for (var i = 0; i < res.snapshotLength; i++) {
+            for (var e = res.snapshotItem(i).parentElement, d = 0; e && d < 16; e = e.parentElement, d++) {
+                var tag = e.tagName.toLowerCase();
+                if (tag === 'ytlr-ad-slot-renderer') break;
+                if (/(^|-)(ad|ads|masthead|promo|promoted)(-|$)/.test(tag)) {
+                    if (e.style.display !== 'none') {
+                        e.style.setProperty('display', 'none', 'important');
+                        adStats.feedAds++;
+                        if (!otherAdTags[tag]) { otherAdTags[tag] = 1; log('hid an advert shown as ' + tag); }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    setInterval(function () { try { hideAds(); } catch (e) { log('hide ads: ' + e); } }, 1000);
 
     // ---- the menus -----------------------------------------------------------------------------
     //
