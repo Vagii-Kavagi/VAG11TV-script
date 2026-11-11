@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.0.9' };
+    window.__vag11 = { version: '1.0.10' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -262,6 +262,18 @@
         }
     }
     setInterval(function () { try { hideAds(); } catch (e) { log('hide ads: ' + e); } }, 1000);
+    // Diagnosis (1.0.10): what this document holds.
+    var censusLeft = 8;
+    var censusTimer = setInterval(function () {
+        if (censusLeft-- <= 0) { clearInterval(censusTimer); return; }
+        try {
+            var body = document.body ? document.body.innerText || '' : '';
+            log('census at ' + Math.round(performance.now()) + ' ms: ad-slots ' + document.querySelectorAll('ytlr-ad-slot-renderer').length
+                + ', badges ' + document.querySelectorAll('yt-badge').length + ', tiles ' + document.querySelectorAll('ytlr-tile-renderer').length
+                + ', "Sponsored" in text ' + (body.indexOf('Sponsored') >= 0) + ', visible ' + document.visibilityState
+                + ', url ' + location.href.slice(0, 80));
+        } catch (e) { log('census: ' + e); }
+    }, 5000);
 
     // ---- the menus -----------------------------------------------------------------------------
     //
