@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.1.0' };
+    window.__vag11 = { version: '1.1.1' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -67,9 +67,11 @@
         return x && typeof x === 'object' && (x.adSlotRenderer || x.tvMastheadRenderer);
     }
 
-    // Feeds are a few levels of lists of shelves of tiles, so the walk is bounded by depth.
+    // Advert entries are taken out of any list in the response, and an advert held directly in a
+    // field is dropped. The TV interface nests feeds deeply (browse > surface > sections > shelves >
+    // lists > tiles), deeper than the 14 levels this walk used to stop at, so it goes to 40.
     function sweep(node, depth) {
-        if (!node || typeof node !== 'object' || depth > 14) return;
+        if (!node || typeof node !== 'object' || depth > 40) return;
         if (Array.isArray(node)) {
             for (var i = node.length - 1; i >= 0; i--) {
                 if (isAdItem(node[i])) { node.splice(i, 1); adStats.feedAds++; }
@@ -79,8 +81,24 @@
         }
         for (var k in node) {
             var v = node[k];
-            if (v && typeof v === 'object') sweep(v, depth + 1);
+            if (!v || typeof v !== 'object') continue;
+            if (k === 'adSlotRenderer' || k === 'tvMastheadRenderer') { delete node[k]; adStats.feedAds++; continue; }
+            sweep(v, depth + 1);
         }
+    }
+
+    // Diagnosis: where an advert survived, as a path.
+    function findAdPath(node, path, depth) {
+        if (!node || typeof node !== 'object' || depth > 60) return null;
+        for (var k in node) {
+            if (k === 'adSlotRenderer') return path + '.' + k;
+            var v = node[k];
+            if (v && typeof v === 'object') {
+                var p = findAdPath(v, path + (Array.isArray(node) ? '[' + k + ']' : '.' + k), depth + 1);
+                if (p) return p;
+            }
+        }
+        return null;
     }
 
     function cleanAds(r) {
@@ -91,10 +109,8 @@
             if (r.adBreakHeartbeatParams) delete r.adBreakHeartbeatParams;
             adStats.videos++;
         }
-        if (r.contents || r.continuationContents || r.onResponseReceivedActions) {
-            sweep(r.contents, 0);
-            sweep(r.continuationContents, 0);
-            sweep(r.onResponseReceivedActions, 0);
+        for (var key in r) {
+            if (key !== 'entries' && r[key] && typeof r[key] === 'object') sweep(r[key], 0);
         }
         if (Array.isArray(r.entries)) {
             var before = r.entries.length;
@@ -200,9 +216,10 @@
         return function (r) {
             var left = 0;
             try { left = (JSON.stringify(r).match(/adSlotRenderer/g) || []).length; } catch (e) { }
+            var path = left ? findAdPath(r, 'r', 0) : '';
             log(how + ' with adSlotRenderer x' + (text.match(/adSlotRenderer/g) || []).length + ' (' + text.length
                 + ' chars) at ' + Math.round(performance.now()) + ' ms: removed ' + (adStats.feedAds - before) + ', left ' + left
-                + (text.indexOf('tvBrowseRenderer') >= 0 ? ' [browse]' : '') + (text.indexOf('feedNudgeRenderer') >= 0 ? ' [nudge]' : ''));
+                + (text.indexOf('tvBrowseRenderer') >= 0 ? ' [browse]' : '') + (text.indexOf('feedNudgeRenderer') >= 0 ? ' [nudge]' : '') + (path ? ' first left at ' + path : ''));
         };
     }
     JSON.parse = function () {
@@ -237,7 +254,7 @@
         if (!cfg.adblock) { if (adStyle.parentNode) adStyle.parentNode.removeChild(adStyle); return; }
         if (!adStyle.parentNode) (document.head || document.documentElement).appendChild(adStyle);
         if (!document.evaluate) return;
-        var res = document.evaluate("//text()[normalize-space()='Sponsored']", document, null, 7, null);
+        var res = document.evaluate("//text()[contains(., 'Sponsored')]", document, null, 7, null);
         for (var i = 0; i < res.snapshotLength; i++) {
             if (chainLogs > 0) {
                 chainLogs--;
