@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.1.2' };
+    window.__vag11 = { version: '1.1.3' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -85,20 +85,6 @@
             if (k === 'adSlotRenderer' || k === 'tvMastheadRenderer') { delete node[k]; adStats.feedAds++; continue; }
             sweep(v, depth + 1);
         }
-    }
-
-    // Diagnosis: where an advert survived, as a path.
-    function findAdPath(node, path, depth) {
-        if (!node || typeof node !== 'object' || depth > 60) return null;
-        for (var k in node) {
-            if (k === 'adSlotRenderer') return path + '.' + k;
-            var v = node[k];
-            if (v && typeof v === 'object') {
-                var p = findAdPath(v, path + (Array.isArray(node) ? '[' + k + ']' : '.' + k), depth + 1);
-                if (p) return p;
-            }
-        }
-        return null;
     }
 
     function cleanAds(r) {
@@ -207,26 +193,8 @@
         }
         return r;
     }
-    // Diagnosis (1.0.9): which parsed responses carry adverts, and whether they were taken out.
-    var parseProbeLeft = 12;
-    function probeParse(text, how) {
-        if (parseProbeLeft <= 0 || typeof text !== 'string' || text.indexOf('adSlotRenderer') < 0) return;
-        parseProbeLeft--;
-        var before = adStats.feedAds;
-        return function (r) {
-            var left = 0;
-            try { left = (JSON.stringify(r).match(/adSlotRenderer/g) || []).length; } catch (e) { }
-            var path = left ? findAdPath(r, 'r', 0) : '';
-            log(how + ' with adSlotRenderer x' + (text.match(/adSlotRenderer/g) || []).length + ' (' + text.length
-                + ' chars) at ' + Math.round(performance.now()) + ' ms: removed ' + (adStats.feedAds - before) + ', left ' + left
-                + (text.indexOf('tvBrowseRenderer') >= 0 ? ' [browse]' : '') + (text.indexOf('feedNudgeRenderer') >= 0 ? ' [nudge]' : '') + (path ? ' first left at ' + path : ''));
-        };
-    }
     JSON.parse = function () {
-        var after = probeParse(arguments[0], 'JSON.parse');
-        var r = edit(parse.apply(this, arguments));
-        if (after) after(r);
-        return r;
+        return edit(parse.apply(this, arguments));
     };
 
     // The page also reads responses with fetch(...).json(), which never goes through JSON.parse:
@@ -235,10 +203,7 @@
     if (window.Response && Response.prototype.json) {
         Response.prototype.json = function () {
             return this.text().then(function (text) {
-                var after = probeParse(text, 'Response.json');
-                var r = edit(parse(text));
-                if (after) after(r);
-                return r;
+                return edit(parse(text));
             });
         };
     }
@@ -249,7 +214,6 @@
     // "Sponsored" badge is hidden at its nearest advert-type ancestor, and its name logged once.
     var adStyle = document.createElement('style');
     adStyle.textContent = 'ytlr-ad-slot-renderer{display:none!important}';
-    var chainLogs = 2;
     // Text nodes containing "Sponsored", also inside shadow roots, which ordinary searches miss.
     function findSponsored(root, out, depth) {
         if (!root || depth > 12) return;
@@ -285,26 +249,14 @@
                 }
                 if (tag === 'ytlr-shelf-renderer' || tag === 'body') break;
             }
-            if (chainLogs > 0) { chainLogs--; log('Sponsored found: ' + chain.join(' < ') + (target ? ' -> hiding ' + target.tagName.toLowerCase() : '')); }
             if (target && target.style.display !== 'none') {
+                log('hid an advert on screen: ' + chain.join(' < '));
                 target.style.setProperty('display', 'none', 'important');
                 adStats.feedAds++;
             }
         }
     }
     setInterval(function () { try { hideAds(); } catch (e) { log('hide ads: ' + e); } }, 1000);
-    // Diagnosis (1.0.10): what this document holds.
-    var censusLeft = 8;
-    var censusTimer = setInterval(function () {
-        if (censusLeft-- <= 0) { clearInterval(censusTimer); return; }
-        try {
-            var body = document.body ? document.body.innerText || '' : '';
-            log('census at ' + Math.round(performance.now()) + ' ms: ad-slots ' + document.querySelectorAll('ytlr-ad-slot-renderer').length
-                + ', badges ' + document.querySelectorAll('yt-badge').length + ', tiles ' + document.querySelectorAll('ytlr-tile-renderer').length
-                + ', "Sponsored" in text ' + (body.indexOf('Sponsored') >= 0) + ', visible ' + document.visibilityState
-                + ', url ' + location.href.slice(0, 80));
-        } catch (e) { log('census: ' + e); }
-    }, 5000);
 
     // ---- the menus -----------------------------------------------------------------------------
     //
@@ -378,7 +330,9 @@
             'box-sizing:border-box', 'padding:6vh 3vw', 'overflow:hidden',
             'background:rgba(24,24,24,0.98)', 'box-shadow:-1vw 0 3vw rgba(0,0,0,0.6)'
         ].join(';'));
-        menu = { page: page, rows: menuRows(page), index: 0, el: panel };
+        // armed after the press that opened the menu is released, so that press cannot change a row
+        menu = { page: page, rows: menuRows(page), index: 0, el: panel, armed: false };
+        setTimeout(function () { if (menu) menu.armed = true; }, 600);
         (document.body || document.documentElement).appendChild(panel);
         drawMenu();
     }
@@ -401,7 +355,8 @@
         if (!menu) return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        if (e.type !== 'keydown') return;
+        if (e.type === 'keyup') { menu.armed = true; return; }
+        if (e.type !== 'keydown' || !menu.armed || e.repeat) return;
         var k = e.keyCode, row = menu.rows[menu.index];
         if (BACK_KEYS[k]) { closeMenu(); return; }
         if (k === 38) moveFocus(-1);
@@ -722,5 +677,5 @@
         return { cfg: cfg, ads: adStats, vid: curVid, segs: segs, t: v ? v.currentTime : null, d: v ? v.duration : null };
     };
     window.__vag11.openMenu = openMenu;
-    log('loaded ' + window.__vag11.version + ' at ' + Math.round(performance.now()) + ' ms after page start');
+    log('loaded ' + window.__vag11.version + ', ad blocking ' + (cfg.adblock ? 'on' : 'off'));
 })();
