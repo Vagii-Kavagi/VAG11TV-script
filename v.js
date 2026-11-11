@@ -9,12 +9,12 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.1.5' };
+    window.__vag11 = { version: '1.1.6' };
 
     // ---- choices -------------------------------------------------------------------------------
 
     var AUTO = 0, ASK = 1, OFF = 2;
-    var MODE_NAMES = ['Auto skip', 'Show a skip button', 'Off'];
+    var MODE_NAMES = ['Auto skip', 'Skip button', 'Off'];
     var CATS = ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'preview', 'music_offtopic', 'filler'];
     var CAT_NAMES = {
         sponsor: 'Sponsor', selfpromo: 'Unpaid / self promotion', interaction: 'Interaction reminder (subscribe)',
@@ -404,7 +404,7 @@
         });
 
         m.el.appendChild(el('div', 'position:absolute;left:2.6vw;right:2.6vw;bottom:3.6vh;font:400 1.8vh ' + FONT + ';color:#8a8a8a',
-            'OK or ‹ ›  change      Back  close'));
+            'OK or ‹ ›  change  ·  Back  close'));
     }
 
     function openMenu(page) {
