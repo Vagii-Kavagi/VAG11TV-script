@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.1.3' };
+    window.__vag11 = { version: '1.1.4' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -232,6 +232,18 @@
         var root = e.getRootNode && e.getRootNode();
         return root && root.host ? root.host : null;
     }
+    function moveFocusOn() {
+        setTimeout(function () {
+            var t = document.activeElement || document.body;
+            ['keydown', 'keyup'].forEach(function (type) {
+                var ev = new KeyboardEvent(type, { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, which: 39, bubbles: true, cancelable: true });
+                try { Object.defineProperty(ev, 'keyCode', { get: function () { return 39; } }); } catch (e) { }
+                try { Object.defineProperty(ev, 'which', { get: function () { return 39; } }); } catch (e) { }
+                t.dispatchEvent(ev);
+            });
+            log('moved focus off a hidden advert');
+        }, 0);
+    }
     function hideAds() {
         if (!cfg.adblock) { if (adStyle.parentNode) adStyle.parentNode.removeChild(adStyle); return; }
         if (!adStyle.parentNode) (document.head || document.documentElement).appendChild(adStyle);
@@ -251,6 +263,9 @@
             }
             if (target && target.style.display !== 'none') {
                 log('hid an advert on screen: ' + chain.join(' < '));
+                // Hidden but still focused (it is often the first tile, focused at start): OK would
+                // open it. Focus moves on to the next tile, as a press of Right would.
+                if (target.contains(document.activeElement)) moveFocusOn();
                 target.style.setProperty('display', 'none', 'important');
                 adStats.feedAds++;
             }
