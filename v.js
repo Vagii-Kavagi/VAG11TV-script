@@ -9,7 +9,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.1.1' };
+    window.__vag11 = { version: '1.1.2' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -249,32 +249,46 @@
     // "Sponsored" badge is hidden at its nearest advert-type ancestor, and its name logged once.
     var adStyle = document.createElement('style');
     adStyle.textContent = 'ytlr-ad-slot-renderer{display:none!important}';
-    var otherAdTags = {}, chainLogs = 2;
+    var chainLogs = 2;
+    // Text nodes containing "Sponsored", also inside shadow roots, which ordinary searches miss.
+    function findSponsored(root, out, depth) {
+        if (!root || depth > 12) return;
+        var walker = document.createTreeWalker(root, 5 /* elements and text */, null, false), n;
+        while ((n = walker.nextNode())) {
+            if (n.nodeType === 3) {
+                if (n.nodeValue && n.nodeValue.indexOf('Sponsored') >= 0) out.push(n);
+            } else if (n.shadowRoot) {
+                findSponsored(n.shadowRoot, out, depth + 1);
+            }
+        }
+    }
+    // The parent, stepping out of a shadow root to its host.
+    function up(e) {
+        if (e.parentElement) return e.parentElement;
+        var root = e.getRootNode && e.getRootNode();
+        return root && root.host ? root.host : null;
+    }
     function hideAds() {
         if (!cfg.adblock) { if (adStyle.parentNode) adStyle.parentNode.removeChild(adStyle); return; }
         if (!adStyle.parentNode) (document.head || document.documentElement).appendChild(adStyle);
-        if (!document.evaluate) return;
-        var res = document.evaluate("//text()[contains(., 'Sponsored')]", document, null, 7, null);
-        for (var i = 0; i < res.snapshotLength; i++) {
-            if (chainLogs > 0) {
-                chainLogs--;
-                var chain = [];
-                for (var c = res.snapshotItem(i).parentElement, k = 0; c && k < 12; c = c.parentElement, k++) {
-                    chain.push(c.tagName.toLowerCase() + '[' + getComputedStyle(c).display + ']');
-                }
-                log('Sponsored on screen at ' + Math.round(performance.now()) + ' ms: ' + chain.join(' < '));
-            }
-            for (var e = res.snapshotItem(i).parentElement, d = 0; e && d < 16; e = e.parentElement, d++) {
+        if (!document.body) return;
+        var found = [];
+        findSponsored(document.body, found, 0);
+        for (var i = 0; i < found.length; i++) {
+            var chain = [], target = null;
+            for (var e = found[i].parentElement || up(found[i]), d = 0; e && d < 24; e = up(e), d++) {
                 var tag = e.tagName.toLowerCase();
-                if (tag === 'ytlr-ad-slot-renderer') break;
-                if (/(^|-)(ad|ads|masthead|promo|promoted)(-|$)/.test(tag)) {
-                    if (e.style.display !== 'none') {
-                        e.style.setProperty('display', 'none', 'important');
-                        adStats.feedAds++;
-                        if (!otherAdTags[tag]) { otherAdTags[tag] = 1; log('hid an advert shown as ' + tag); }
-                    }
-                    break;
+                chain.push(tag);
+                if (tag === 'ytlr-ad-slot-renderer' || tag === 'ytlr-tile-renderer' || /(^|-)(ad|ads|masthead|promo|promoted)(-|$)/.test(tag)) {
+                    target = e;
+                    if (tag !== 'ytlr-tile-renderer') break; // prefer the ad wrapper above the tile when there is one
                 }
+                if (tag === 'ytlr-shelf-renderer' || tag === 'body') break;
+            }
+            if (chainLogs > 0) { chainLogs--; log('Sponsored found: ' + chain.join(' < ') + (target ? ' -> hiding ' + target.tagName.toLowerCase() : '')); }
+            if (target && target.style.display !== 'none') {
+                target.style.setProperty('display', 'none', 'important');
+                adStats.feedAds++;
             }
         }
     }
