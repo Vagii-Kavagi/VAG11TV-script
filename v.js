@@ -10,7 +10,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.1.8' };
+    window.__vag11 = { version: '1.1.9' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -597,6 +597,11 @@
     setTimeout(function () {
         var b = updater();
         log('updater: ' + (b ? 'present, ' + (function () { try { return b.appInfo(); } catch (e) { return 'appInfo failed: ' + e; } })() : 'missing (' + typeof window.vag11updater + ')'));
+        try {
+            log('bridge globals: HTMLMediaElementExtension=' + typeof window.HTMLMediaElementExtension +
+                ' Android_AmatiDeviceInspector=' + typeof window.Android_AmatiDeviceInspector + ' names=' +
+                Object.getOwnPropertyNames(window).filter(function (n) { return /vag11|htmlmedia|amati|android|java|cobalt|h5vcc/i.test(n); }).join(','));
+        } catch (e) { log('bridge globals: ' + e); }
     }, 8000);
 
     // One quiet check a while after start, so Settings can say when an update is waiting.
