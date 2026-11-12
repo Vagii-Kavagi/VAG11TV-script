@@ -10,7 +10,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.1.9' };
+    window.__vag11 = { version: '1.2.0' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -505,18 +505,61 @@
     //
     // Settings > Updates checks the releases of Vagii-Kavagi/VAG11TV on GitHub. Each is tagged
     // v<script>-engine-<engine>; this copy is the script it loaded and the engine it runs on (its
-    // Android version name). A newer one is downloaded and installed by window.vag11updater, the
-    // small Android part the build adds: an update of this app, so the sign-in and settings stay.
+    // Android version name). A newer one is downloaded and installed by the small Android part the
+    // build adds, the platform service com.vag11.tv.updater, reached through H5vccPlatformService:
+    // an update of this app, so the sign-in and settings stay.
 
-    var REPO = 'Vagii-Kavagi/VAG11TV';
-    var upd = { phase: 'idle', release: null, error: '', st: null, timer: 0 };
+    var REPO = 'Vagii-Kavagi/VAG11TV', SERVICE = 'com.vag11.tv.updater';
+    var upd = { phase: 'idle', release: null, error: '', st: null, timer: 0, engine: null };
+    var client = null, waiting = [];
 
-    function updater() { return window.vag11updater || null; }
+    // The service, or null when this copy of the app has none. Each request is a JSON message;
+    // the answer is text, returned by send() or, on some engines, through the open() callback.
+    function updater() {
+        if (client) return client;
+        var P = window.H5vccPlatformService, raw = null;
+        try {
+            if (!P || (P.has && !P.has(SERVICE))) return null;
+            raw = P.open(SERVICE, function (svc, data) { var w = waiting.shift(); if (w) w(data); });
+        } catch (e) { log('updater: open failed: ' + e); }
+        if (!raw) return null;
+        function call(cmd, extra) {
+            var msg = { cmd: cmd };
+            for (var k in (extra || {})) msg[k] = extra[k];
+            var bytes = new TextEncoder().encode(JSON.stringify(msg));
+            return new Promise(function (resolve, reject) {
+                var timer = setTimeout(function () { reject(new Error('no answer from the app')); }, 8000);
+                function done(data) { clearTimeout(timer); resolve(data); }
+                var r;
+                try { r = raw.send(bytes.buffer); } catch (e) { clearTimeout(timer); reject(e); return; }
+                if (r && typeof r.then === 'function') r.then(done, reject);
+                else if (r) done(r);
+                else waiting.push(done);
+            }).then(function (data) {
+                if (!data) return '';
+                return new TextDecoder().decode(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+            });
+        }
+        client = {
+            appInfo: function () { return call('appInfo').then(function (t) { return parse(t); }); },
+            canInstall: function () { return call('canInstall').then(function (t) { return t === 'true'; }); },
+            openInstallSetting: function () { return call('openInstallSetting'); },
+            state: function () { return call('state').then(function (t) { return parse(t); }); },
+            start: function (path, sha) { return call('start', { path: path, sha256: sha }); }
+        };
+        return client;
+    }
 
     function current() {
-        var engine = null;
-        try { var b = updater(); if (b) engine = parse(b.appInfo()).versionName; } catch (e) { }
-        return { script: window.__vag11.version, engine: engine };
+        return { script: window.__vag11.version, engine: upd.engine };
+    }
+
+    // The engine version, asked once from the app (null without the service).
+    function learnEngine() {
+        var b = updater();
+        if (!b || upd.engine) return Promise.resolve(upd.engine);
+        return b.appInfo().then(function (info) { upd.engine = info && info.versionName || null; return upd.engine; },
+            function (e) { log('updater: appInfo failed: ' + e); return null; });
     }
 
     function parseTag(tag) {
@@ -548,8 +591,10 @@
         upd.phase = 'checking';
         upd.error = '';
         redrawUpdates();
-        return fetch('https://api.github.com/repos/' + REPO + '/releases?per_page=20', {
-            headers: { Accept: 'application/vnd.github+json' }
+        return learnEngine().then(function () {
+            return fetch('https://api.github.com/repos/' + REPO + '/releases?per_page=20', {
+                headers: { Accept: 'application/vnd.github+json' }
+            });
         }).then(function (res) {
             if (!res.ok) throw new Error('GitHub answered ' + res.status);
             return res.text();
@@ -572,36 +617,41 @@
         }).then(redrawUpdates);
     }
 
-    function installUpdate() {
-        var b = updater();
-        if (!b || !upd.release) return;
-        if (!b.canInstall()) { upd.phase = 'permission'; redrawUpdates(); return; }
-        var res = b.start(upd.release.tag + '/' + upd.release.asset.name, upd.release.asset.digest);
-        if (res !== 'started' && res !== 'busy') { upd.phase = 'error'; upd.error = 'Could not start: ' + res; redrawUpdates(); return; }
-        upd.phase = 'running';
-        upd.st = null;
+    function failed(why) {
+        upd.phase = 'error';
+        upd.error = why;
         clearInterval(upd.timer);
-        upd.timer = setInterval(function () {
-            var st = null;
-            try { st = parse(b.state()); } catch (e) { }
-            if (!st) return;
-            upd.st = st;
-            if (st.state === 'error') { upd.phase = 'error'; upd.error = st.message || 'Not updated'; clearInterval(upd.timer); }
-            else if (st.state === 'confirm') upd.phase = 'confirm';
-            redrawUpdates();
-        }, 500);
         redrawUpdates();
     }
 
-    // Whether the Android part is there for the page (logged once a few seconds after start).
+    function installUpdate() {
+        var b = updater(), r = upd.release;
+        if (!b || !r) return;
+        b.canInstall().then(function (ok) {
+            if (!ok) { upd.phase = 'permission'; redrawUpdates(); return; }
+            return b.start(r.tag + '/' + r.asset.name, r.asset.digest).then(function (res) {
+                if (res !== 'started' && res !== 'busy') { failed('Could not start: ' + res); return; }
+                upd.phase = 'running';
+                upd.st = null;
+                clearInterval(upd.timer);
+                upd.timer = setInterval(function () {
+                    b.state().then(function (st) {
+                        if (!st) return;
+                        upd.st = st;
+                        if (st.state === 'error') failed(st.message || 'Not updated');
+                        else { if (st.state === 'confirm') upd.phase = 'confirm'; redrawUpdates(); }
+                    }, function () { });
+                }, 700);
+                redrawUpdates();
+            });
+        }).catch(function (e) { failed('The app did not answer (' + (e && e.message || e) + ').'); });
+    }
+
+    // Whether the Android part is there (logged once a few seconds after start).
     setTimeout(function () {
-        var b = updater();
-        log('updater: ' + (b ? 'present, ' + (function () { try { return b.appInfo(); } catch (e) { return 'appInfo failed: ' + e; } })() : 'missing (' + typeof window.vag11updater + ')'));
-        try {
-            log('bridge globals: HTMLMediaElementExtension=' + typeof window.HTMLMediaElementExtension +
-                ' Android_AmatiDeviceInspector=' + typeof window.Android_AmatiDeviceInspector + ' names=' +
-                Object.getOwnPropertyNames(window).filter(function (n) { return /vag11|htmlmedia|amati|android|java|cobalt|h5vcc/i.test(n); }).join(','));
-        } catch (e) { log('bridge globals: ' + e); }
+        learnEngine().then(function (engine) {
+            log('updater: ' + (updater() ? 'service open, engine ' + engine : 'no service in this copy'));
+        });
     }, 8000);
 
     // One quiet check a while after start, so Settings can say when an update is waiting.
@@ -635,7 +685,7 @@
                 break;
             case 'permission':
                 rows.push({ kind: 'hero', label: 'One setting first', sub: 'Allow VAG11 TV to install updates: switch it on in the screen that opens, then press Back.' });
-                rows.push({ kind: 'action', label: 'Open the setting', run: function () { b && b.openInstallSetting(); } });
+                rows.push({ kind: 'action', label: 'Open the setting', run: function () { if (b) b.openInstallSetting(); } });
                 rows.push({ kind: 'action', label: 'Install now', run: installUpdate });
                 break;
             case 'running':
