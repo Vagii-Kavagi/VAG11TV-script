@@ -10,7 +10,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.2.0' };
+    window.__vag11 = { version: '1.2.1' };
 
     // ---- choices -------------------------------------------------------------------------------
 
