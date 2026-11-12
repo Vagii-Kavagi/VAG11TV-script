@@ -10,7 +10,7 @@
 // lookup, which carries only the first 4 characters of the SHA-256 of the video id.
 (function () {
     if (window.top !== window || window.__vag11) return;
-    window.__vag11 = { version: '1.1.7' };
+    window.__vag11 = { version: '1.1.8' };
 
     // ---- choices -------------------------------------------------------------------------------
 
@@ -342,11 +342,11 @@
 
     function toggleSwitch(on, focused) {
         var track = el('div', [
-            'position:relative', 'flex:none', 'width:4.6vh', 'height:2.6vh', 'border-radius:1.3vh',
+            'position:relative', 'flex:none', 'width:5.75vh', 'height:3.25vh', 'border-radius:1.62vh',
             'background:' + (on ? '#FF0033' : (focused ? '#909090' : '#5c5c5c')), 'transition:background .15s'
         ].join(';'));
         track.appendChild(el('div', [
-            'position:absolute', 'top:0.3vh', 'left:' + (on ? '2.3vh' : '0.3vh'), 'width:2vh', 'height:2vh',
+            'position:absolute', 'top:0.38vh', 'left:' + (on ? '2.88vh' : '0.38vh'), 'width:2.5vh', 'height:2.5vh',
             'border-radius:50%', 'background:#fff', 'transition:left .15s'
         ].join(';')));
         return track;
@@ -357,51 +357,53 @@
         m.el.textContent = '';
         if (m.page === 'updates') {
             // The rows follow the update's progress; focus stays on a row that can take it.
-            var keep = m.rows[m.index] && m.rows[m.index].label;
+            var keep = m.phase === upd.phase && m.rows[m.index] && m.rows[m.index].label;
+            m.phase = upd.phase;
             m.rows = updateRows();
             m.index = -1;
+            m.rows.forEach(function (r, i) { if (m.index < 0 && !keep && r.kind === 'action') m.index = i; });
             m.rows.forEach(function (r, i) { if (m.index < 0 && focusable(r) && r.label === keep) m.index = i; });
             if (m.index < 0) m.rows.forEach(function (r, i) { if (m.index < 0 && focusable(r)) m.index = i; });
         }
 
-        var head = el('div', 'display:flex;align-items:center;gap:1.2vw;margin:0 0 3vh 0');
-        head.appendChild(markSvg('5.2vh'));
+        var head = el('div', 'display:flex;align-items:center;gap:1.2vw;margin:0 0 3.75vh 0');
+        head.appendChild(markSvg('6.5vh'));
         var titles = el('div', '');
-        titles.appendChild(el('div', 'font:500 3.4vh ' + FONT + ';color:#fff;line-height:1.2', m.page === 'ads' ? 'Ad blocking' : m.page === 'updates' ? 'Updates' : 'SponsorBlock'));
-        titles.appendChild(el('div', 'font:400 1.9vh ' + FONT + ';color:#aaa;margin-top:0.3vh', 'VAG11 TV'));
+        titles.appendChild(el('div', 'font:500 4.25vh ' + FONT + ';color:#fff;line-height:1.2', m.page === 'ads' ? 'Ad blocking' : m.page === 'updates' ? 'Updates' : 'SponsorBlock'));
+        titles.appendChild(el('div', 'font:400 2.38vh ' + FONT + ';color:#aaa;margin-top:0.38vh', 'VAG11 TV'));
         head.appendChild(titles);
         m.el.appendChild(head);
 
         m.rows.forEach(function (r, i) {
             var focused = i === m.index;
             if (r.kind === 'section') {
-                m.el.appendChild(el('div', 'font:500 1.8vh ' + FONT + ';color:#aaa;letter-spacing:0.08em;text-transform:uppercase;margin:2.6vh 1vw 1vh 1vw', r.label));
+                m.el.appendChild(el('div', 'font:500 2.25vh ' + FONT + ';color:#aaa;letter-spacing:0.08em;text-transform:uppercase;margin:3.25vh 1vw 1.25vh 1vw', r.label));
                 return;
             }
             if (r.kind === 'note') {
-                m.el.appendChild(el('div', 'font:400 1.8vh ' + FONT + ';color:#8a8a8a;margin:2.2vh 1vw 0 1vw;line-height:1.45', r.label));
+                m.el.appendChild(el('div', 'font:400 2.25vh ' + FONT + ';color:#8a8a8a;margin:2.75vh 1vw 0 1vw;line-height:1.45', r.label));
                 return;
             }
             if (r.kind === 'hero') {
-                var hero = el('div', 'margin:1vh 1vw 2.4vh 1vw');
-                hero.appendChild(el('div', 'font:500 4vh ' + FONT + ';color:#fff;line-height:1.2', r.label));
-                hero.appendChild(el('div', 'font:400 2.1vh ' + FONT + ';color:#aaa;margin-top:1vh;line-height:1.45', r.sub));
+                var hero = el('div', 'margin:1.25vh 1vw 3vh 1vw');
+                hero.appendChild(el('div', 'font:500 5vh ' + FONT + ';color:#fff;line-height:1.2', r.label));
+                hero.appendChild(el('div', 'font:400 2.62vh ' + FONT + ';color:#aaa;margin-top:1.25vh;line-height:1.45', r.sub));
                 m.el.appendChild(hero);
                 return;
             }
             if (r.kind === 'progress') {
                 var pct = r.total > 0 ? Math.min(100, Math.round(r.done * 100 / r.total)) : 0;
-                var bar = el('div', 'height:1vh;border-radius:0.5vh;background:#3a3a3a;margin:0.6vh 1vw;overflow:hidden');
+                var bar = el('div', 'height:1.25vh;border-radius:0.62vh;background:#3a3a3a;margin:0.75vh 1vw;overflow:hidden');
                 bar.appendChild(el('div', 'height:100%;width:' + pct + '%;background:#FF0033;transition:width .4s'));
                 m.el.appendChild(bar);
-                m.el.appendChild(el('div', 'font:400 1.9vh ' + FONT + ';color:#aaa;margin:0.8vh 1vw',
+                m.el.appendChild(el('div', 'font:400 2.38vh ' + FONT + ';color:#aaa;margin:1vh 1vw',
                     pct + '%  ·  ' + Math.round(r.done / 1048576) + ' of ' + Math.round(r.total / 1048576) + ' MB'));
                 return;
             }
             if (r.kind === 'action') {
                 m.el.appendChild(el('div', [
-                    'box-sizing:border-box', 'padding:1.6vh 1.4vw', 'margin:0.6vh 0', 'border-radius:999px',
-                    'font:500 2.4vh ' + FONT, 'text-align:center',
+                    'box-sizing:border-box', 'padding:2vh 1.4vw', 'margin:0.75vh 0', 'border-radius:999px',
+                    'font:500 3vh ' + FONT, 'text-align:center',
                     'background:' + (focused ? '#f1f1f1' : '#2c2c2c'), 'color:' + (focused ? '#0f0f0f' : '#fff')
                 ].join(';'), r.label));
                 return;
@@ -409,9 +411,9 @@
             if (r.kind === 'stats') {
                 var grid = el('div', 'display:flex;gap:0.8vw;margin:0 0.4vw');
                 [[adStats.videos, 'videos'], [adStats.feedAds, 'feed adverts'], [adStats.shorts, 'Shorts']].forEach(function (st) {
-                    var card = el('div', 'flex:1;background:#2c2c2c;border-radius:1.4vh;padding:1.6vh 1vw');
-                    card.appendChild(el('div', 'font:500 3.2vh ' + FONT + ';color:#fff', String(st[0])));
-                    card.appendChild(el('div', 'font:400 1.7vh ' + FONT + ';color:#aaa;margin-top:0.2vh', st[1]));
+                    var card = el('div', 'flex:1;background:#2c2c2c;border-radius:1.75vh;padding:2vh 1vw');
+                    card.appendChild(el('div', 'font:500 4vh ' + FONT + ';color:#fff', String(st[0])));
+                    card.appendChild(el('div', 'font:400 2.12vh ' + FONT + ';color:#aaa;margin-top:0.25vh', st[1]));
                     grid.appendChild(card);
                 });
                 m.el.appendChild(grid);
@@ -420,38 +422,38 @@
             var dim = r.dim && r.dim();
             var row = el('div', [
                 'display:flex', 'align-items:center', 'gap:1vw', 'box-sizing:border-box',
-                'padding:' + (r.kind === 'toggle' ? '1.6vh 1.4vw' : '1.15vh 1.4vw'), 'margin:0.35vh 0',
-                'border-radius:999px', 'font:400 2.4vh ' + FONT,
+                'padding:' + (r.kind === 'toggle' ? '2vh 1.4vw' : '1.44vh 1.4vw'), 'margin:0.44vh 0',
+                'border-radius:999px', 'font:400 3vh ' + FONT,
                 'background:' + (focused ? '#f1f1f1' : (r.kind === 'toggle' ? '#2c2c2c' : 'transparent')),
                 'color:' + (focused ? '#0f0f0f' : '#fff'), 'opacity:' + (dim && !focused ? '0.45' : '1'),
                 'transition:background .12s'
             ].join(';'));
             if (r.kind === 'cat') {
-                row.appendChild(el('div', 'flex:none;width:1.4vh;height:1.4vh;border-radius:50%;background:' + (SEG_COLORS[r.cat] || '#fff')));
+                row.appendChild(el('div', 'flex:none;width:1.75vh;height:1.75vh;border-radius:50%;background:' + (SEG_COLORS[r.cat] || '#fff')));
             }
             var text = el('div', 'flex:1;min-width:0');
             text.appendChild(el('div', r.kind === 'toggle' ? 'font-weight:500' : '', r.label));
-            if (r.sub) text.appendChild(el('div', 'font-size:1.8vh;margin-top:0.3vh;color:' + (focused ? '#3f3f3f' : '#aaa'), r.sub));
+            if (r.sub) text.appendChild(el('div', 'font-size:2.25vh;margin-top:0.38vh;color:' + (focused ? '#3f3f3f' : '#aaa'), r.sub));
             row.appendChild(text);
             if (r.kind === 'toggle') {
                 row.appendChild(toggleSwitch(r.on(), focused));
             } else {
                 var v = r.value();
-                row.appendChild(el('div', 'flex:none;font-weight:500;font-size:2.1vh;color:' + (focused ? '#0f0f0f' : (v === 'Off' ? '#8a8a8a' : '#fff')),
+                row.appendChild(el('div', 'flex:none;font-weight:500;font-size:2.62vh;color:' + (focused ? '#0f0f0f' : (v === 'Off' ? '#8a8a8a' : '#fff')),
                     focused ? '‹  ' + v + '  ›' : v));
             }
             m.el.appendChild(row);
         });
 
-        m.el.appendChild(el('div', 'position:absolute;left:2.6vw;right:2.6vw;bottom:3.6vh;font:400 1.8vh ' + FONT + ';color:#8a8a8a',
+        m.el.appendChild(el('div', 'position:absolute;left:2.6vw;right:2.6vw;bottom:4.5vh;font:400 2.25vh ' + FONT + ';color:#8a8a8a',
             m.page === 'updates' ? 'OK  choose  ·  Back  close' : 'OK or ‹ ›  change  ·  Back  close'));
     }
 
     function openMenu(page) {
         closeMenu();
         var panel = el('div', [
-            'position:fixed', 'top:0', 'right:0', 'bottom:0', 'width:40vw', 'z-index:2147483647',
-            'box-sizing:border-box', 'padding:5vh 2.6vw 8vh 2.6vw', 'overflow:hidden',
+            'position:fixed', 'top:0', 'right:0', 'bottom:0', 'width:50vw', 'z-index:2147483647',
+            'box-sizing:border-box', 'padding:6.25vh 2.6vw 10vh 2.6vw', 'overflow:hidden',
             'background:#212121', 'box-shadow:-1vw 0 4vw rgba(0,0,0,0.55)',
             'transform:translateX(100%)', 'transition:transform .2s ease-out'
         ].join(';'));
@@ -590,6 +592,12 @@
         }, 500);
         redrawUpdates();
     }
+
+    // Whether the Android part is there for the page (logged once a few seconds after start).
+    setTimeout(function () {
+        var b = updater();
+        log('updater: ' + (b ? 'present, ' + (function () { try { return b.appInfo(); } catch (e) { return 'appInfo failed: ' + e; } })() : 'missing (' + typeof window.vag11updater + ')'));
+    }, 8000);
 
     // One quiet check a while after start, so Settings can say when an update is waiting.
     setTimeout(function () { if (upd.phase === 'idle') checkUpdates(); }, 45000);
